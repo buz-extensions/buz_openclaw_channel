@@ -1,9 +1,6 @@
 syntax = "proto3";
 package buz.dc.ai.bridge;
 
-option java_multiple_files = true;
-option java_package = "com.buz.ai.grpc.bridge";
-
 // 核心桥接服务
 service OpenClawBridgeService {
   // 双向流式通道

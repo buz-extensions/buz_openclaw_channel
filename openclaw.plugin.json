@@ -1,84 +1,40 @@
 {
   "id": "buz",
   "channels": ["buz"],
+  "name": "buz Plugin",
+  "description": "Connects OpenClaw to buz",
+  "enabledByDefault": true,
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
       "enabled": {
-        "type": "boolean",
-        "description": "Enable this Buz account"
+        "type": "boolean"
       },
-      "serverUrl": {
-        "type": "string",
-        "description": "gRPC server URL (e.g., buz-dc-ai.example.com:443)"
+      "serverAddress": {
+        "type": "string"
       },
       "secretKey": {
-        "type": "string",
-        "description": "API secret key for authentication (e.g., buz_sk_xxxx)"
+        "type": "string"
       },
-      "accountId": {
-        "type": "string",
-        "description": "Account identifier"
-      },
-      "name": {
-        "type": "string",
-        "description": "Display name for this account"
-      },
-      "allowFrom": {
-        "type": "array",
-        "items": { "type": "string" },
-        "description": "List of allowed sender IDs"
-      },
-      "defaultTo": {
-        "type": "string",
-        "description": "Default target for outgoing messages"
-      },
-      "dm": {
-        "type": "object",
-        "properties": {
-          "policy": {
-            "type": "string",
-            "enum": ["allowlist", "blocklist", "open"]
-          },
-          "allowFrom": {
-            "type": "array",
-            "items": { "type": "string" }
-          }
-        }
-      },
-      "groupPolicy": {
-        "type": "string",
-        "enum": ["allowlist", "open"],
-        "description": "Policy for group chat access"
-      },
-      "groups": {
+      "accounts": {
         "type": "object",
         "additionalProperties": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "users": {
-              "type": "array",
-              "items": { "type": "string" }
+            "enabled": {
+              "type": "boolean"
             },
-            "channels": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "users": {
-                    "type": "array",
-                    "items": { "type": "string" }
-                  }
-                }
-              }
+            "serverAddress": {
+              "type": "string"
+            },
+            "secretKey": {
+              "type": "string"
             }
           }
         }
       }
-    },
-    "required": ["serverUrl", "secretKey"]
+    }
   }
 }

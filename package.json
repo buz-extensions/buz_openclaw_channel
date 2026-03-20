@@ -1,38 +1,58 @@
 {
-  "name": "@openclaw/buz",
+  "name": "@buz/openclaw-buz",
   "version": "1.0.0",
-  "description": "OpenClaw Buz channel plugin via gRPC bidirectional stream",
+  "description": "OpenClaw buz channel plugin",
   "type": "module",
-  "main": "./index.ts",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "openclaw-channel",
+    "buz",
+    "grpc"
+  ],
+  "files": [
+    "index.ts",
+    "setup-entry.ts",
+    "openclaw.plugin.json",
+    "src",
+    "proto",
+    "README.md"
+  ],
   "exports": {
     ".": "./index.ts",
-    "./api": "./api.ts",
-    "./runtime-api": "./runtime-api.ts"
+    "./setup-entry": "./setup-entry.ts",
+    "./openclaw.plugin.json": "./openclaw.plugin.json"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.10.0",
     "@grpc/proto-loader": "^0.7.10",
-    "zod": "^3.22.0"
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
   },
   "openclaw": {
-    "extensions": ["./index.ts"],
+    "extensions": [
+      "./index.ts"
+    ],
     "setupEntry": "./setup-entry.ts",
     "channel": {
       "id": "buz",
-      "label": "Buz",
-      "selectionLabel": "Buz IM (gRPC)",
-      "detailLabel": "Buz IM",
-      "docsPath": "/channels/buz",
-      "docsLabel": "buz",
-      "blurb": "Connects OpenClaw to Buz IM via gRPC bidirectional stream.",
-      "order": 85
+      "label": "buz",
+      "selectionLabel": "buz (gRPC)",
+      "docsPath": "/channels/buz"
     },
     "install": {
-      "npmSpec": "@openclaw/buz",
-      "localPath": "extensions/buz_openclaw_channel"
+      "npmSpec": "@buz/openclaw-buz",
+      "localPath": "extensions/buz_openclaw_channel",
+      "defaultChoice": "npm"
     },
     "bundle": {
       "stageRuntimeDependencies": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
