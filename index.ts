@@ -85,20 +85,31 @@ export const buzChannelPlugin = {
     resolveSessionTarget: ({ id }: any) => id,
   },
   setupWizard: {
-    steps: [
-      {
-        id: "serverAddress",
-        type: "text",
-        label: "Server Address",
-        placeholder: "e.g. grpc.buz.ai:443",
+    channel: "buz",
+    status: {
+      configuredLabel: "configured",
+      unconfiguredLabel: "needs server + secret",
+      configuredHint: "configured",
+      unconfiguredHint: "needs server + secret",
+      configuredScore: 1,
+      unconfiguredScore: 0,
+      resolveConfigured: ({ cfg }: any) => {
+        const channelConfig = cfg?.channels?.["buz"];
+        const accounts = channelConfig?.accounts || {};
+        return Object.values(accounts).some((acc: any) => 
+          acc?.serverAddress && acc?.secretKey
+        ) || (channelConfig?.serverAddress && channelConfig?.secretKey);
       },
-      {
-        id: "secretKey",
-        type: "password",
-        label: "Secret Key",
-        placeholder: "Enter your IM Secret Key",
+      resolveStatusLines: ({ cfg, configured }: any) => {
+        const accountCount = Object.keys(cfg?.channels?.["buz"]?.accounts || {}).length;
+        return [`buz: ${configured ? "configured" : "needs server + secret"}`, `Accounts: ${accountCount || 0}`];
       },
-    ],
+    },
+    credentials: [],
+    finalize: async ({ cfg, accountId, credentialValues, prompter }: any) => {
+      // buz uses setup adapter for configuration
+      return { cfg };
+    },
   },
   setup: {
     validateInput: async (params: any) => {
