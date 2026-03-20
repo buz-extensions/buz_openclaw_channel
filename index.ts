@@ -1,4 +1,4 @@
-import { buildChannelConfigSchema, defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
+import { buildChannelConfigSchema } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
 const BuzAccountSchema = z
@@ -186,10 +186,4 @@ export const buzPlugin = {
   },
 } as any;
 
-export default defineChannelPluginEntry({
-  id: "buz",
-  name: "buz",
-  description: "Connects OpenClaw to buz via gRPC",
-  plugin: buzPlugin,
-  setRuntime: setBuzRuntime,
-});
+export default buzPlugin;

@@ -1,5 +1,5 @@
 {
-  "name": "@buz/openclaw-buz",
+  "name": "@buz-extensions/openclaw-buz",
   "version": "1.0.0",
   "description": "OpenClaw buz channel plugin",
   "type": "module",
