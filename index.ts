@@ -25,7 +25,7 @@ export const buzChannelPlugin = {
   meta: {
     id: "buz",
     label: "buz",
-    selectionLabel: "buz (gRPC)",
+    selectionLabel: "buz (voice chat)",
     docsPath: "/channels/buz",
     blurb: "Connect OpenClaw to buz via gRPC bidirectional stream.",
   },

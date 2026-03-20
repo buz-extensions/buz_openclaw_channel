@@ -1,6 +1,6 @@
 {
   "name": "@buz-extensions/buz",
-  "version": "1.0.0-beta.4",
+  "version": "1.0.0-beta.6",
   "description": "OpenClaw buz channel plugin",
   "type": "module",
   "license": "MIT",
@@ -27,7 +27,7 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.10.0",
     "@grpc/proto-loader": "^0.7.10",
-    "zod": "^3.25.76"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "openclaw": "*"
