@@ -1,6 +1,6 @@
 {
-  "name": "@buz-extensions/openclaw-buz",
-  "version": "1.0.0",
+  "name": "@buz-extensions/buz",
+  "version": "1.0.0-beta.1",
   "description": "OpenClaw buz channel plugin",
   "type": "module",
   "license": "MIT",
@@ -44,7 +44,7 @@
       "docsPath": "/channels/buz"
     },
     "install": {
-      "npmSpec": "@buz/openclaw-buz",
+      "npmSpec": "@buz-extensions/buz",
       "localPath": "extensions/buz_openclaw_channel",
       "defaultChoice": "npm"
     },

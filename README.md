@@ -1,11 +1,11 @@
-# @buz/openclaw-buz
+# @buz-extensions/buz
 
 buz channel plugin for OpenClaw. This plugin connects OpenClaw to buz through a gRPC bidirectional stream.
 
 ## Install
 
 ```bash
-openclaw plugins install @buz/openclaw-buz
+openclaw plugins install @buz-extensions/buz
 ```
 
 ## Configuration

@@ -1,5 +1,5 @@
-import { buzPlugin, setBuzRuntime } from "./index.js";
+import plugin, { buzChannelPlugin, setBuzRuntime } from "./index.js";
 
-export { buzPlugin, setBuzRuntime } from "./index.js";
+export { buzChannelPlugin, setBuzRuntime } from "./index.js";
 
-export default buzPlugin;
+export default plugin;

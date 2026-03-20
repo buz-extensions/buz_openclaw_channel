@@ -1,4 +1,6 @@
-import { buildChannelConfigSchema } from "openclaw/plugin-sdk";
+import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk/line";
+import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/line";
+import { buildChannelConfigSchema } from "openclaw/plugin-sdk/line";
 import { z } from "zod";
 
 const BuzAccountSchema = z
@@ -18,12 +20,7 @@ const BuzConfigSchema = z
   })
   .partial();
 
-// Simple runtime setter for buz
-export const setBuzRuntime = (runtime: any) => {
-  // buz doesn't need special runtime setup
-};
-
-export const buzPlugin = {
+export const buzChannelPlugin = {
   id: "buz",
   meta: {
     id: "buz",
@@ -45,12 +42,10 @@ export const buzPlugin = {
       const ids = Object.keys(accounts);
       return ids.length > 0 ? ids : ["default"];
     },
-    // IMPORTANT: OpenClaw calls resolveAccount(cfg, accountId) not ({ cfg, accountId })
     resolveAccount: (cfg: any, accountId?: string | null) => {
       const id = accountId || "default";
       const channelConfig = cfg?.channels?.["buz"] ?? {};
 
-      // Support both old-style top-level config and new accounts-based config
       const topLevelDefault =
         id === "default"
           ? {
@@ -186,4 +181,19 @@ export const buzPlugin = {
   },
 } as any;
 
-export default buzPlugin;
+export const setBuzRuntime = (_runtime: any) => {
+  // buz doesn't need special runtime setup yet
+};
+
+const plugin = {
+  id: "buz",
+  name: "buz Plugin",
+  description: "Connects OpenClaw to buz",
+  configSchema: emptyPluginConfigSchema(),
+  register(api: OpenClawPluginApi) {
+    setBuzRuntime(api.runtime);
+    api.registerChannel({ plugin: buzChannelPlugin as ChannelPlugin });
+  },
+};
+
+export default plugin;
