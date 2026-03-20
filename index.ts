@@ -1,6 +1,5 @@
 import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk/line";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/line";
-import { buildChannelConfigSchema } from "openclaw/plugin-sdk/line";
+import { emptyPluginConfigSchema, buildChannelConfigSchema } from "openclaw/plugin-sdk/line";
 import { z } from "zod";
 
 const BuzAccountSchema = z
@@ -19,6 +18,20 @@ const BuzConfigSchema = z
     accounts: z.record(z.string(), BuzAccountSchema.optional()).optional(),
   })
   .partial();
+
+// Simple runtime store
+let buzRuntime: any = null;
+
+export function setBuzRuntime(runtime: any) {
+  buzRuntime = runtime;
+}
+
+export function getBuzRuntime() {
+  if (!buzRuntime) {
+    throw new Error("Buz runtime not initialized");
+  }
+  return buzRuntime;
+}
 
 export const buzChannelPlugin = {
   id: "buz",
@@ -87,12 +100,10 @@ export const buzChannelPlugin = {
   setup: {
     validateInput: async (params: any) => {
       const { setupAdapter } = await import("./src/setup.js");
-      // Returns string (error message) or null (valid)
       return setupAdapter.validateInput(params);
     },
     applyAccountConfig: async (params: any) => {
       const { setupAdapter } = await import("./src/setup.js");
-      // Returns OpenClawConfig directly
       const newCfg = await setupAdapter.applyAccountConfig(params);
       return newCfg;
     },
@@ -167,10 +178,6 @@ export const buzChannelPlugin = {
   },
 } as any;
 
-export const setBuzRuntime = (_runtime: any) => {
-  // buz doesn't need special runtime setup yet
-};
-
 const plugin = {
   id: "buz",
   name: "buz Plugin",
@@ -182,4 +189,5 @@ const plugin = {
   },
 };
 
+export { setBuzRuntime, getBuzRuntime, buzChannelPlugin };
 export default plugin;

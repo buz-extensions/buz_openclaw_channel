@@ -1,6 +1,6 @@
-import { recordInboundSession } from "openclaw/plugin-sdk";
-import { dispatchReplyWithBufferedBlockDispatcher } from "openclaw/plugin-sdk/auto-reply/reply/provider-dispatcher";
+import { recordInboundSessionAndDispatchReply } from "openclaw/plugin-sdk";
 import { sendText } from "./outbound.js";
+import { getBuzRuntime } from "../index.js";
 import { resolve } from "path";
 import { homedir } from "os";
 
@@ -16,11 +16,9 @@ function resolveDefaultAgentIdCompat(cfg: any): string {
 
 function resolveStorePath(cfg: any): string {
   const configuredPath = cfg?.session?.storePath || ".openclaw/sessions";
-  // If it's already an absolute path, use it as-is
   if (configuredPath.startsWith("/") || configuredPath.startsWith("~")) {
     return configuredPath.replace(/^~/, homedir());
   }
-  // Otherwise, resolve relative to home directory
   return resolve(homedir(), configuredPath);
 }
 
@@ -71,65 +69,52 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
   console.log("[buz inbound] ctxPayload:", JSON.stringify(ctxPayload, null, 2));
 
   const storePath = resolveStorePath(cfg);
-  console.log("[buz inbound] recording inbound session, storePath:", storePath);
+  console.log("[buz inbound] storePath:", storePath);
   console.log("[buz inbound] sessionKey:", ctxPayload.SessionKey);
 
   try {
-    await recordInboundSession({
+    console.log("[buz inbound] dispatching via recordInboundSessionAndDispatchReply...");
+    
+    // Get core from runtime
+    const core = getBuzRuntime().core;
+    
+    await recordInboundSessionAndDispatchReply({
+      recordInboundSession: core.channel.session.recordInboundSession,
+      dispatchReplyWithBufferedBlockDispatcher: core.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
       storePath,
-      sessionKey: ctxPayload.SessionKey,
-      ctx: ctxPayload,
-      updateLastRoute: {
-        sessionKey: ctxPayload.SessionKey,
-        channel: "buz",
-        to: toTarget,
-        accountId,
+      ctxPayload,
+      agentId,
+      channel: "buz",
+      accountId,
+      deliver: async (payload: any, info: any) => {
+        console.log(
+          "[buz inbound] deliver called:",
+          info?.kind,
+          "text:",
+          payload?.text?.substring?.(0, 50),
+        );
+        if (!payload?.text) {
+          return;
+        }
+        await sendText({
+          to: toTarget,
+          text: payload.text,
+          accountId,
+          replyToId: inboundMsg.message_id,
+        });
+        console.log("[buz inbound] reply sent successfully via gRPC");
       },
-      onRecordError: (err) => {
+      onRecordError: (err: any) => {
         console.error("[buz inbound] failed to record session:", err);
       },
-    });
-    console.log("[buz inbound] session recorded successfully");
-  } catch (err: any) {
-    console.error("[buz inbound] error recording session:", err.message);
-  }
-
-  try {
-    console.log("[buz inbound] dispatching inbound message...");
-    await dispatchReplyWithBufferedBlockDispatcher({
-      ctx: ctxPayload as any,
-      cfg,
-      dispatcherOptions: {
-        cfg,
-        agentId,
-        channel: "buz",
-        accountId,
-        deliver: async (payload: any, info: any) => {
-          console.log(
-            "[buz inbound] deliver called:",
-            info?.kind,
-            "text:",
-            payload?.text?.substring?.(0, 50),
-          );
-          if (!payload?.text) {
-            return;
-          }
-          await sendText({
-            to: toTarget,
-            text: payload.text,
-            accountId,
-            replyToId: inboundMsg.message_id,
-          });
-          console.log("[buz inbound] reply sent successfully via gRPC");
-        },
-        onError: (err: any, info: any) => {
-          console.error(`[buz inbound] ${info?.kind || "unknown"} reply failed:`, err);
-        },
+      onDispatchError: (err: any, info: any) => {
+        console.error(`[buz inbound] ${info?.kind || "unknown"} reply failed:`, err);
       },
       replyOptions: {
         disableBlockStreaming: true,
       },
     });
+    
     console.log("[buz inbound] message dispatched successfully");
     ctx.log?.info?.(
       `[${accountId}] Successfully dispatched inbound message from ${inboundMsg.sender_id}`,
