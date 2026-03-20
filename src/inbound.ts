@@ -1,5 +1,8 @@
 import { recordInboundSession } from "openclaw/plugin-sdk";
+import { dispatchReplyWithBufferedBlockDispatcher } from "openclaw/plugin-sdk/auto-reply/reply/provider-dispatcher";
 import { sendText } from "./outbound.js";
+import { resolve } from "path";
+import { homedir } from "os";
 
 function resolveDefaultAgentIdCompat(cfg: any): string {
   const configured = cfg?.defaultAgentId ?? cfg?.agents?.default ?? cfg?.agent?.default;
@@ -11,14 +14,14 @@ function resolveDefaultAgentIdCompat(cfg: any): string {
   return firstAgentId || "default";
 }
 
-function resolveDispatchReplyWithBufferedBlockDispatcher(ctx: any):
-  | ((params: any) => Promise<any>)
-  | null {
-  return (
-    ctx?.runtime?.channel?.reply?.dispatchReplyWithBufferedBlockDispatcher ??
-    ctx?.core?.channel?.reply?.dispatchReplyWithBufferedBlockDispatcher ??
-    null
-  );
+function resolveStorePath(cfg: any): string {
+  const configuredPath = cfg?.session?.storePath || ".openclaw/sessions";
+  // If it's already an absolute path, use it as-is
+  if (configuredPath.startsWith("/") || configuredPath.startsWith("~")) {
+    return configuredPath.replace(/^~/, homedir());
+  }
+  // Otherwise, resolve relative to home directory
+  return resolve(homedir(), configuredPath);
 }
 
 export async function handleInboundMessage(ctx: any, inboundMsg: any) {
@@ -67,7 +70,7 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
 
   console.log("[buz inbound] ctxPayload:", JSON.stringify(ctxPayload, null, 2));
 
-  const storePath = cfg?.session?.storePath || ".openclaw/sessions";
+  const storePath = resolveStorePath(cfg);
   console.log("[buz inbound] recording inbound session, storePath:", storePath);
   console.log("[buz inbound] sessionKey:", ctxPayload.SessionKey);
 
@@ -89,17 +92,6 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
     console.log("[buz inbound] session recorded successfully");
   } catch (err: any) {
     console.error("[buz inbound] error recording session:", err.message);
-  }
-
-  const dispatchReplyWithBufferedBlockDispatcher =
-    resolveDispatchReplyWithBufferedBlockDispatcher(ctx);
-  if (!dispatchReplyWithBufferedBlockDispatcher) {
-    const error = new Error(
-      "OpenClaw reply runtime is unavailable on plugin context; missing channel reply dispatcher",
-    );
-    console.error("[buz inbound] failed to dispatch:", error.message);
-    ctx.log?.error?.(`[${accountId}] Failed to dispatch inbound message: ${error.message}`);
-    throw error;
   }
 
   try {
