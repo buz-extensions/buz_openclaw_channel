@@ -1,0 +1,84 @@
+{
+  "id": "buz",
+  "channels": ["buz"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable this Buz account"
+      },
+      "serverUrl": {
+        "type": "string",
+        "description": "gRPC server URL (e.g., buz-dc-ai.example.com:443)"
+      },
+      "secretKey": {
+        "type": "string",
+        "description": "API secret key for authentication (e.g., buz_sk_xxxx)"
+      },
+      "accountId": {
+        "type": "string",
+        "description": "Account identifier"
+      },
+      "name": {
+        "type": "string",
+        "description": "Display name for this account"
+      },
+      "allowFrom": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "List of allowed sender IDs"
+      },
+      "defaultTo": {
+        "type": "string",
+        "description": "Default target for outgoing messages"
+      },
+      "dm": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": ["allowlist", "blocklist", "open"]
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "groupPolicy": {
+        "type": "string",
+        "enum": ["allowlist", "open"],
+        "description": "Policy for group chat access"
+      },
+      "groups": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "users": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "channels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "users": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "required": ["serverUrl", "secretKey"]
+  }
+}
