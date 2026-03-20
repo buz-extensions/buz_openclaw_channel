@@ -84,42 +84,17 @@ export const buzChannelPlugin = {
     },
     resolveSessionTarget: ({ id }: any) => id,
   },
-  setupWizard: {
-    channel: "buz",
-    status: {
-      configuredLabel: "configured",
-      unconfiguredLabel: "needs server + secret",
-      configuredHint: "configured",
-      unconfiguredHint: "needs server + secret",
-      configuredScore: 1,
-      unconfiguredScore: 0,
-      resolveConfigured: ({ cfg }: any) => {
-        const channelConfig = cfg?.channels?.["buz"];
-        const accounts = channelConfig?.accounts || {};
-        return Object.values(accounts).some((acc: any) => 
-          acc?.serverAddress && acc?.secretKey
-        ) || (channelConfig?.serverAddress && channelConfig?.secretKey);
-      },
-      resolveStatusLines: ({ cfg, configured }: any) => {
-        const accountCount = Object.keys(cfg?.channels?.["buz"]?.accounts || {}).length;
-        return [`buz: ${configured ? "configured" : "needs server + secret"}`, `Accounts: ${accountCount || 0}`];
-      },
-    },
-    credentials: [],
-    finalize: async ({ cfg, accountId, credentialValues, prompter }: any) => {
-      // buz uses setup adapter for configuration
-      return { cfg };
-    },
-  },
   setup: {
     validateInput: async (params: any) => {
       const { setupAdapter } = await import("./src/setup.js");
+      // Returns string (error message) or null (valid)
       return setupAdapter.validateInput(params);
     },
     applyAccountConfig: async (params: any) => {
       const { setupAdapter } = await import("./src/setup.js");
-      const result = await setupAdapter.applyAccountConfig(params);
-      return result;
+      // Returns OpenClawConfig directly
+      const newCfg = await setupAdapter.applyAccountConfig(params);
+      return newCfg;
     },
   },
   outbound: {

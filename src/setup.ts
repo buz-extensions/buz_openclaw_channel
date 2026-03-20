@@ -17,9 +17,11 @@ export const setupAdapter = {
       secretKeyLength: secretKey?.length,
     });
 
-    if (!serverAddress) return { ok: false, error: "Server Address is required" };
-    if (!secretKey) return { ok: false, error: "Secret Key is required" };
-    return { ok: true, values: input };
+    // Return error message as string, or null if valid
+    // According to ChannelSetupAdapter.validateInput type: string | null
+    if (!serverAddress) return "Server Address is required";
+    if (!secretKey) return "Secret Key is required";
+    return null;
   },
 
   applyAccountConfig: async (params: any) => {
@@ -93,7 +95,8 @@ export const setupAdapter = {
       defaultAccountKeys: Object.keys(newCfg.channels["buz"].accounts.default || {}),
     });
 
-    // IMPORTANT: Return the entire cfg object, not just the channels part
-    return { cfg: newCfg, accountId: resolvedAccountId };
+    // IMPORTANT: Return only the cfg object, NOT { cfg, accountId }
+    // The ChannelSetupAdapter.applyAccountConfig expects OpenClawConfig as return type
+    return newCfg;
   },
 };

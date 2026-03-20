@@ -1,6 +1,6 @@
 {
   "name": "@buz-extensions/buz",
-  "version": "1.0.0-beta.6",
+  "version": "1.0.0-beta.8",
   "description": "OpenClaw buz channel plugin",
   "type": "module",
   "license": "MIT",
