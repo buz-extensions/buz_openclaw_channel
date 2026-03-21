@@ -14,12 +14,39 @@ function resolveDefaultAgentIdCompat(cfg: any): string {
   return firstAgentId || "default";
 }
 
-function resolveStorePath(cfg: any): string {
+function resolveStorePath(cfg: any, agentId: string): string {
+  const runtime = getBuzRuntime();
+  const resolver = runtime?.channel?.session?.resolveStorePath;
+  if (typeof resolver === "function") {
+    return resolver(cfg?.session?.store, { agentId });
+  }
+
   const configuredPath = cfg?.session?.storePath || ".openclaw/sessions";
   if (configuredPath.startsWith("/") || configuredPath.startsWith("~")) {
     return configuredPath.replace(/^~/, homedir());
   }
   return resolve(homedir(), configuredPath);
+}
+
+function buildSessionKey(params: {
+  core: any;
+  agentId: string;
+  accountId: string;
+  isGroup: boolean;
+  conversationId: string;
+}) {
+  const { core, agentId, accountId, isGroup, conversationId } = params;
+  const buildAgentSessionKey = core?.channel?.routing?.buildAgentSessionKey;
+  if (typeof buildAgentSessionKey === "function") {
+    return buildAgentSessionKey({
+      agentId,
+      channel: "buz",
+      accountId,
+      chatType: isGroup ? "group" : "direct",
+      conversationId,
+    });
+  }
+  return `agent:${agentId}:buz:${accountId}:${isGroup ? "group" : "direct"}:${conversationId}`;
 }
 
 export async function handleInboundMessage(ctx: any, inboundMsg: any) {
@@ -30,69 +57,79 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
 
   const accountId = ctx.account.accountId;
   const cfg = ctx.cfg;
+  const core = getBuzRuntime();
   const agentId = resolveDefaultAgentIdCompat(cfg);
 
   console.log("[buz inbound] accountId:", accountId);
   console.log("[buz inbound] agentId:", agentId);
 
-  const fromTarget =
-    inboundMsg.chat_type === "group"
-      ? `buz:group:${inboundMsg.group_id}:${inboundMsg.sender_id}`
-      : `buz:${inboundMsg.sender_id}`;
+  const isGroup = inboundMsg.chat_type === "group";
+  const senderId = String(inboundMsg.sender_id || "").trim();
+  const senderName = String(inboundMsg.sender_name || inboundMsg.sender_id || "").trim() || undefined;
+  const conversationId = String(isGroup ? inboundMsg.group_id : inboundMsg.sender_id || "").trim();
+  const rawBody = String(inboundMsg.content_text || "");
+  const messageSid = String(inboundMsg.message_id || Date.now().toString());
 
-  const toTarget =
-    inboundMsg.chat_type === "group"
-      ? `buz:group:${inboundMsg.group_id}`
-      : `buz:${inboundMsg.sender_id}`;
-
-  const conversationId =
-    inboundMsg.chat_type === "group" ? inboundMsg.group_id : inboundMsg.sender_id;
+  const fromTarget = isGroup ? `buz:group:${conversationId}:${senderId}` : `buz:${senderId}`;
+  const toTarget = isGroup ? `buz:group:${conversationId}` : `buz:${senderId}`;
+  const sessionKey = buildSessionKey({
+    core,
+    agentId,
+    accountId,
+    isGroup,
+    conversationId,
+  });
 
   console.log("[buz inbound] fromTarget:", fromTarget);
   console.log("[buz inbound] toTarget:", toTarget);
   console.log("[buz inbound] conversationId:", conversationId);
+  console.log("[buz inbound] sessionKey:", sessionKey);
 
-  const ctxPayload = {
-    MessageSid: inboundMsg.message_id || Date.now().toString(),
-    MessageSids: [inboundMsg.message_id || Date.now().toString()],
-    SessionKey: `buz:${accountId}:${conversationId}`,
+  const finalizeInboundContext = core?.channel?.reply?.finalizeInboundContext;
+  const baseCtxPayload = {
+    MessageSid: messageSid,
+    MessageSids: [messageSid],
+    SessionKey: sessionKey,
     ConversationId: conversationId,
     From: fromTarget,
     To: toTarget,
-    Body: inboundMsg.content_text || "",
-    BodyForAgent: inboundMsg.content_text || "",
-    BodyForCommands: inboundMsg.content_text || "",
+    Body: rawBody,
+    BodyForAgent: rawBody,
+    BodyForCommands: rawBody,
     Channel: "buz",
-    SenderName: inboundMsg.sender_name || inboundMsg.sender_id,
+    Provider: "buz",
+    Surface: "buz",
+    OriginatingChannel: "buz",
+    OriginatingTo: toTarget,
+    AccountId: accountId,
+    ChatType: isGroup ? "group" : "direct",
+    SenderName: senderName,
+    SenderId: senderId || undefined,
   };
+  const ctxPayload =
+    typeof finalizeInboundContext === "function"
+      ? finalizeInboundContext(baseCtxPayload)
+      : baseCtxPayload;
 
   console.log("[buz inbound] ctxPayload:", JSON.stringify(ctxPayload, null, 2));
 
-  const storePath = resolveStorePath(cfg);
+  const storePath = resolveStorePath(cfg, agentId);
   console.log("[buz inbound] storePath:", storePath);
-  console.log("[buz inbound] sessionKey:", ctxPayload.SessionKey);
+  console.log("[buz inbound] dispatching via recordInboundSessionAndDispatchReply...");
 
   try {
-    console.log("[buz inbound] dispatching via recordInboundSessionAndDispatchReply...");
-    
-    // Get core from runtime
-    const core = getBuzRuntime().core;
-    
     await recordInboundSessionAndDispatchReply({
-      recordInboundSession: core.channel.session.recordInboundSession,
-      dispatchReplyWithBufferedBlockDispatcher: core.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
-      storePath,
-      ctxPayload,
-      agentId,
+      cfg,
       channel: "buz",
       accountId,
-      deliver: async (payload: any, info: any) => {
-        console.log(
-          "[buz inbound] deliver called:",
-          info?.kind,
-          "text:",
-          payload?.text?.substring?.(0, 50),
-        );
+      agentId,
+      routeSessionKey: sessionKey,
+      storePath,
+      ctxPayload,
+      recordInboundSession: core.channel.session.recordInboundSession,
+      dispatchReplyWithBufferedBlockDispatcher: core.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
+      deliver: async (payload: any) => {
+        console.log("[buz inbound] deliver called text:", payload?.text?.substring?.(0, 50));
         if (!payload?.text) {
           return;
         }
@@ -100,7 +137,7 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
           to: toTarget,
           text: payload.text,
           accountId,
-          replyToId: inboundMsg.message_id,
+          replyToId: messageSid,
         });
         console.log("[buz inbound] reply sent successfully via gRPC");
       },
@@ -114,7 +151,7 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
         disableBlockStreaming: true,
       },
     });
-    
+
     console.log("[buz inbound] message dispatched successfully");
     ctx.log?.info?.(
       `[${accountId}] Successfully dispatched inbound message from ${inboundMsg.sender_id}`,
