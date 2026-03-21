@@ -49,6 +49,28 @@ function buildSessionKey(params: {
   return `agent:${agentId}:buz:${accountId}:${isGroup ? "group" : "direct"}:${conversationId}`;
 }
 
+async function emitIntermediate(params: {
+  toTarget: string;
+  accountId: string;
+  messageSid: string;
+  type: string;
+  event: string;
+  text?: string;
+}) {
+  const { toTarget, accountId, messageSid, type, event, text } = params;
+  if (!text && type !== "assistant_message_start") {
+    return;
+  }
+  await sendText({
+    to: toTarget,
+    text: text || "",
+    accountId,
+    replyToId: messageSid,
+    type,
+    event,
+  });
+}
+
 export async function handleInboundMessage(ctx: any, inboundMsg: any) {
   console.log("[buz inbound] =========================================");
   console.log("[buz inbound] handleInboundMessage called");
@@ -138,6 +160,8 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
           text: payload.text,
           accountId,
           replyToId: messageSid,
+          type: payload?.isReasoning ? "reasoning" : "final_reply",
+          event: "done",
         });
         console.log("[buz inbound] reply sent successfully via gRPC");
       },
@@ -148,7 +172,59 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
         console.error(`[buz inbound] ${info?.kind || "unknown"} reply failed:`, err);
       },
       replyOptions: {
-        disableBlockStreaming: true,
+        disableBlockStreaming: false,
+        onPartialReply: async (payload: any) => {
+          await emitIntermediate({
+            toTarget,
+            accountId,
+            messageSid,
+            type: "partial_reply",
+            event: "delta",
+            text: payload?.text,
+          });
+        },
+        onReasoningStream: async (payload: any) => {
+          await emitIntermediate({
+            toTarget,
+            accountId,
+            messageSid,
+            type: "reasoning",
+            event: "delta",
+            text: payload?.text,
+          });
+        },
+        onAssistantMessageStart: async () => {
+          await emitIntermediate({
+            toTarget,
+            accountId,
+            messageSid,
+            type: "assistant_message_start",
+            event: "start",
+            text: "",
+          });
+        },
+        onReasoningEnd: async () => {
+          await emitIntermediate({
+            toTarget,
+            accountId,
+            messageSid,
+            type: "reasoning",
+            event: "done",
+            text: "",
+          });
+        },
+        onToolStart: async (payload: any) => {
+          const toolName = String(payload?.name || "tool").trim() || "tool";
+          const phase = String(payload?.phase || "start").trim() || "start";
+          await emitIntermediate({
+            toTarget,
+            accountId,
+            messageSid,
+            type: "tool_start",
+            event: "start",
+            text: `${toolName}${phase ? ` (${phase})` : ""}`,
+          });
+        },
       },
     });
 

@@ -26,35 +26,33 @@ message BridgeToClientMessage {
   }
 }
 
-// --- 详细子结构 ---
-
 message AuthRequest {
-  string secret_key = 1;     // 用户在 OpenClaw 输入的接入凭证
-  string openclaw_id = 2;    // [可选] 客户端唯一标识
+  string secret_key = 1;
+  string openclaw_id = 2;
 }
 
 message AuthResponse {
   bool success = 1;
   string error_message = 2;
-  string account_id = 3;     // 绑定成功的 IM 账户 ID
+  string account_id = 3;
 }
 
 message InboundMessage {
-  string message_id = 1;     // IM 侧的全局消息 ID
-  string sender_id = 2;      // 发送者 ID
-  string sender_name = 3;    // 发送者昵称
-  string chat_type = 4;      // 枚举: "direct"(单聊), "group"(群聊)
-  string group_id = 5;       // 如果是群聊，群 ID
-  string content_text = 6;   // 文本内容
-  // 可扩展媒体字段 (media_url 等)
+  string message_id = 1;
+  string sender_id = 2;
+  string sender_name = 3;
+  string chat_type = 4;
+  string group_id = 5;
+  string content_text = 6;
 }
 
 message OutboundMessage {
-  string reply_to_id = 1;    // 回复的目标消息 ID (Thread 追踪)
-  string target_id = 2;      // 接收方 ID (用户 ID 或 群组 ID)
-  string chat_type = 3;      // "direct" 或 "group"
-  string content_text = 4;   // AI 生成的回复文本
-  // 可扩展媒体字段
+  string reply_to_id = 1;
+  string target_id = 2;
+  string chat_type = 3;
+  string content_text = 4;
+  string type = 5;           // final_reply / partial_reply / reasoning / tool_start / assistant_message_start / status
+  string event = 6;          // start / delta / done
 }
 
 message HeartbeatPing {
