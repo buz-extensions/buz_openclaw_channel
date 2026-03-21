@@ -24,22 +24,8 @@ function resolveTarget(to: string) {
 export async function sendText(params: any) {
   const { to, text, accountId, replyToId, type = "final_reply", event } = params;
 
-  console.log("[buz outbound] =========================================");
-  console.log("[buz outbound] sendText called");
-  console.log("[buz outbound] to:", to);
-  console.log("[buz outbound] type:", type);
-  console.log("[buz outbound] event:", event);
-  console.log("[buz outbound] text preview:", text?.substring?.(0, 100));
-  console.log("[buz outbound] text length:", text?.length);
-  console.log("[buz outbound] accountId:", accountId);
-  console.log("[buz outbound] replyToId:", replyToId);
-
   const targetAccountId = accountId || "default";
   const stream = activeStreams.get(targetAccountId);
-
-  console.log("[buz outbound] targetAccountId:", targetAccountId);
-  console.log("[buz outbound] activeStreams size:", activeStreams.size);
-  console.log("[buz outbound] stream found:", !!stream);
 
   if (!stream) {
     console.error("[buz outbound] ERROR: No active gRPC stream for account", targetAccountId);

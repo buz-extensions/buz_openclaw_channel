@@ -172,10 +172,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     }
 
     stream.on("data", async (msg: any) => {
-      console.log("[buz gateway] stream received data:", Object.keys(msg));
-
       if (msg.auth_res) {
-        console.log("[buz gateway] received auth_res:", msg.auth_res);
         if (msg.auth_res.success) {
           everConnected = true;
           reconnectAttempts = 0;
@@ -191,7 +188,6 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
 
           if (pingInterval) clearInterval(pingInterval);
           pingInterval = setInterval(() => {
-            console.log("[buz gateway] sending heartbeat");
             if (stream) {
               try {
                 stream.write({
