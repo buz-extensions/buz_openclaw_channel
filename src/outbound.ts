@@ -52,25 +52,26 @@ export async function sendText(params: any) {
   console.log("[buz outbound] sendText called:", JSON.stringify({ to, accountId, type, textLength: text?.length }));
 
   const targetAccountId = String(accountId || "default").trim() || "default";
-  const { chatType, targetId } = resolveTarget(String(to || ""));
-  
-  console.log("[buz outbound] resolved:", JSON.stringify({ chatType, targetId, originalTo: to }));
-  
-  if (!targetId) {
-    // buz channel requires an explicit target (user ID or group ID)
-    // For cron announce, you must specify delivery.to in the job config, e.g.:
-    //   "delivery": { "mode": "announce", "channel": "buz", "to": "user:12345" }
-    throw new Error(
-      "[buz] Cannot send message: target is required. " +
-      "For cron jobs, specify delivery.to with a buz user ID (e.g., 'user:12345' or 'group:abc')"
-    );
-  }
+  const effectiveTo = String(to || "").trim();
+  const hasExplicitTarget = Boolean(effectiveTo);
+  const { chatType, targetId } = resolveTarget(effectiveTo);
+
+  console.log(
+    "[buz outbound] resolved:",
+    JSON.stringify({
+      chatType,
+      targetId,
+      originalTo: to,
+      effectiveTo,
+      routingMode: hasExplicitTarget ? "explicit-target" : "server-default-target",
+    }),
+  );
 
   const outboundMsg = {
     outbound_msg: {
       reply_to_id: replyToId || "",
-      target_id: targetId,
-      chat_type: chatType,
+      target_id: targetId || "",
+      chat_type: hasExplicitTarget ? chatType : "",
       content_text: text || "",
       type,
       event: event || "",
@@ -86,7 +87,7 @@ export async function sendText(params: any) {
       stream.write(outboundMsg);
       markLastOutboundAt(targetAccountId);
       console.log(`[buz outbound] gRPC stream write successful (attempt ${attempt})`);
-      return { messageId: `msg-${Date.now()}`, chatId: to, type, event };
+      return { messageId: `msg-${Date.now()}`, chatId: effectiveTo, type, event };
     } catch (err: any) {
       lastErr = err;
       console.error(`[buz outbound] ERROR writing to stream (attempt ${attempt}):`, err?.message || String(err));

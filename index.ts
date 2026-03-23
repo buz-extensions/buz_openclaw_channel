@@ -1,6 +1,8 @@
 import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk/line";
 import { emptyPluginConfigSchema, buildChannelConfigSchema } from "openclaw/plugin-sdk/line";
 import { z } from "zod";
+import { normalizeBuzTarget, looksLikeBuzId } from "./src/targets.js";
+import { resolveBuzOutboundSessionRoute } from "./src/session-route.js";
 
 const BuzAccountSchema = z
   .object({
@@ -108,48 +110,17 @@ export const buzChannelPlugin = {
     }),
   },
   messaging: {
-    normalizeTarget: (target: string) => target,
+    normalizeTarget: (target: string) => normalizeBuzTarget(target) ?? undefined,
     targetResolver: {
-      looksLikeId: (_id: string) => true,
+      looksLikeId: looksLikeBuzId,
       hint: "<targetId>",
     },
     resolveSessionTarget: ({ kind, id }: any) => {
-      if (kind === "group") return `group:${id}`;
-      return `user:${id}`;
+      if (kind === "group") return `buz:group:${id}`;
+      return `buz:user:${id}`;
     },
-    resolveOutboundSessionRoute: ({ to, route, id, kind, accountId }: any) => {
-      const raw =
-        (typeof to === "string" && to.trim()) ||
-        (typeof route?.to === "string" && route.to.trim()) ||
-        "";
+    resolveOutboundSessionRoute: (params: any) => resolveBuzOutboundSessionRoute(params),
 
-      if (raw) {
-        let normalized = raw;
-        if (!normalized.startsWith("buz:")) {
-          if (normalized.startsWith("group:") || normalized.startsWith("user:")) {
-            normalized = `buz:${normalized}`;
-          } else {
-            normalized = `buz:${normalized}`;
-          }
-        }
-        return {
-          channel: "buz",
-          accountId: String(accountId || route?.accountId || "default"),
-          to: normalized,
-        };
-      }
-
-      if (typeof id === "string" && id.trim()) {
-        const normalized = kind === "group" ? `buz:group:${id.trim()}` : `buz:user:${id.trim()}`;
-        return {
-          channel: "buz",
-          accountId: String(accountId || route?.accountId || "default"),
-          to: normalized,
-        };
-      }
-
-      return null;
-    },
   },
   setup: {
     validateInput: async (params: any) => {
@@ -168,35 +139,16 @@ export const buzChannelPlugin = {
     textChunkLimit: 4000,
     resolveTarget: ({ to }: { to?: string; cfg?: any; allowFrom?: string[]; accountId?: string | null; mode?: "explicit" | "implicit" }) => {
       const trimmed = to?.trim() ?? "";
-
-      // buz channel always requires an explicit target
-      // For cron jobs, specify delivery.to with a buz user/group ID
       if (!trimmed) {
+        return { ok: true, to: "" };
+      }
+      const normalized = normalizeBuzTarget(trimmed);
+      if (!normalized) {
         return {
           ok: false,
-          error: new Error(
-            "Delivering to buz requires target <targetId>. " +
-            "For cron jobs, specify delivery.to (e.g., 'user:12345' or 'group:abc')"
-          ),
+          error: new Error("Delivering to buz requires a valid target <targetId> when delivery.to is specified."),
         };
       }
-      
-
-      // Normalize buz target format
-      // Supported: userId, group:groupId, buz:userId, buz:group:groupId
-      let normalized = trimmed;
-
-      // If already starts with buz:, keep as-is
-      if (!normalized.startsWith("buz:")) {
-        // If starts with group: or user:, add buz: prefix
-        if (normalized.startsWith("group:") || normalized.startsWith("user:")) {
-          normalized = `buz:${normalized}`;
-        } else {
-          // Otherwise assume it's a direct user target
-          normalized = `buz:${normalized}`;
-        }
-      }
-
       return { ok: true, to: normalized };
     },
     sendText: async ({ to, text, accountId, replyToId, threadId, cfg }: any) => {

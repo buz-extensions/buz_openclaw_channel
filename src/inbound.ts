@@ -156,7 +156,7 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
       sessionKey: ctxPayload.SessionKey ?? sessionKey,
       deliveryContext: {
         channel: "buz",
-        to: isGroup ? `group:${conversationId}` : `user:${senderId}`,
+        to: isGroup ? `buz:group:${conversationId}` : `buz:user:${senderId}`,
         accountId,
       },
       ctx: ctxPayload,
