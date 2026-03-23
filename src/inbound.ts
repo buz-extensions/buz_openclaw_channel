@@ -58,7 +58,7 @@ async function emitIntermediate(params: {
   text?: string;
 }) {
   const { toTarget, accountId, messageSid, type, event, text } = params;
-  if (!text && type !== "assistant_message_start") {
+  if (!text && type !== "assistant_message_start" && !(type === "reasoning" && event === "done")) {
     return;
   }
   await sendText({
@@ -139,6 +139,17 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
   console.log("[buz inbound] storePath:", storePath);
   console.log("[buz inbound] dispatching via recordInboundSessionAndDispatchReply...");
 
+  let streamEventQueue = Promise.resolve();
+  let lastPartialText = "";
+  let lastReasoningText = "";
+  const enqueueStreamEvent = (task: () => Promise<void>) => {
+    const next = streamEventQueue.then(task);
+    streamEventQueue = next.catch((err) => {
+      console.error("[buz inbound] stream event failed:", err);
+    });
+    return next;
+  };
+
   try {
     await recordInboundSessionAndDispatchReply({
       cfg,
@@ -151,19 +162,21 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
       recordInboundSession: core.channel.session.recordInboundSession,
       dispatchReplyWithBufferedBlockDispatcher: core.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
       deliver: async (payload: any) => {
-        console.log("[buz inbound] deliver called text:", payload?.text?.substring?.(0, 50));
-        if (!payload?.text) {
-          return;
-        }
-        await sendText({
-          to: toTarget,
-          text: payload.text,
-          accountId,
-          replyToId: messageSid,
-          type: payload?.isReasoning ? "reasoning" : "final_reply",
-          event: "done",
+        await enqueueStreamEvent(async () => {
+          console.log("[buz inbound] deliver called text:", payload?.text?.substring?.(0, 50));
+          if (!payload?.text) {
+            return;
+          }
+          await sendText({
+            to: toTarget,
+            text: payload.text,
+            accountId,
+            replyToId: messageSid,
+            type: payload?.isReasoning ? "reasoning" : "final_reply",
+            event: "done",
+          });
+          console.log("[buz inbound] reply sent successfully via gRPC");
         });
-        console.log("[buz inbound] reply sent successfully via gRPC");
       },
       onRecordError: (err: any) => {
         console.error("[buz inbound] failed to record session:", err);
@@ -174,60 +187,83 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
       replyOptions: {
         disableBlockStreaming: false,
         onPartialReply: async (payload: any) => {
-          await emitIntermediate({
-            toTarget,
-            accountId,
-            messageSid,
-            type: "partial_reply",
-            event: "delta",
-            text: payload?.text,
+          const text = String(payload?.text || "");
+          if (!text || text === lastPartialText) {
+            return;
+          }
+          lastPartialText = text;
+          await enqueueStreamEvent(async () => {
+            await emitIntermediate({
+              toTarget,
+              accountId,
+              messageSid,
+              type: "partial_reply",
+              event: "delta",
+              text,
+            });
           });
         },
         onReasoningStream: async (payload: any) => {
-          await emitIntermediate({
-            toTarget,
-            accountId,
-            messageSid,
-            type: "reasoning",
-            event: "delta",
-            text: payload?.text,
+          const text = String(payload?.text || "");
+          if (!text || text === lastReasoningText) {
+            return;
+          }
+          lastReasoningText = text;
+          await enqueueStreamEvent(async () => {
+            await emitIntermediate({
+              toTarget,
+              accountId,
+              messageSid,
+              type: "reasoning",
+              event: "delta",
+              text,
+            });
           });
         },
         onAssistantMessageStart: async () => {
-          await emitIntermediate({
-            toTarget,
-            accountId,
-            messageSid,
-            type: "assistant_message_start",
-            event: "start",
-            text: "",
+          await enqueueStreamEvent(async () => {
+            lastPartialText = "";
+            await emitIntermediate({
+              toTarget,
+              accountId,
+              messageSid,
+              type: "assistant_message_start",
+              event: "start",
+              text: "",
+            });
           });
         },
         onReasoningEnd: async () => {
-          await emitIntermediate({
-            toTarget,
-            accountId,
-            messageSid,
-            type: "reasoning",
-            event: "done",
-            text: "",
+          await enqueueStreamEvent(async () => {
+            lastReasoningText = "";
+            await emitIntermediate({
+              toTarget,
+              accountId,
+              messageSid,
+              type: "reasoning",
+              event: "done",
+              text: "",
+            });
           });
         },
         onToolStart: async (payload: any) => {
           const toolName = String(payload?.name || "tool").trim() || "tool";
           const phase = String(payload?.phase || "start").trim() || "start";
-          await emitIntermediate({
-            toTarget,
-            accountId,
-            messageSid,
-            type: "tool_start",
-            event: "start",
-            text: `${toolName}${phase ? ` (${phase})` : ""}`,
+          await enqueueStreamEvent(async () => {
+            await emitIntermediate({
+              toTarget,
+              accountId,
+              messageSid,
+              type: "tool_start",
+              event: "start",
+              text: `${toolName}${phase ? ` (${phase})` : ""}`,
+            });
           });
         },
       },
     });
 
+    await streamEventQueue;
     console.log("[buz inbound] message dispatched successfully");
     ctx.log?.info?.(
       `[${accountId}] Successfully dispatched inbound message from ${inboundMsg.sender_id}`,

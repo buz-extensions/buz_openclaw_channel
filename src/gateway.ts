@@ -10,12 +10,77 @@ const __dirname = dirname(__filename);
 
 export const activeStreams = new Map<string, grpc.ClientDuplexStream<any, any>>();
 export const activeClients = new Map<string, any>();
+const streamReadyState = new Map<string, boolean>();
+const streamWaiters = new Map<
+  string,
+  Array<{ resolve: (stream: grpc.ClientDuplexStream<any, any>) => void; reject: (err: Error) => void }>
+>();
 
 function setStatus(ctx: any, patch: Record<string, unknown>) {
   console.log(`[buz gateway] setStatus called:`, patch);
   ctx.setStatus?.({
     accountId: ctx.account?.accountId || "default",
     ...patch,
+  });
+}
+
+function resolvePendingWaiters(accountId: string, stream: grpc.ClientDuplexStream<any, any>) {
+  const waiters = streamWaiters.get(accountId);
+  if (!waiters?.length) {
+    return;
+  }
+  streamWaiters.delete(accountId);
+  for (const waiter of waiters) {
+    waiter.resolve(stream);
+  }
+}
+
+function rejectPendingWaiters(accountId: string, err: Error) {
+  const waiters = streamWaiters.get(accountId);
+  if (!waiters?.length) {
+    return;
+  }
+  streamWaiters.delete(accountId);
+  for (const waiter of waiters) {
+    waiter.reject(err);
+  }
+}
+
+export function isStreamReady(accountId: string): boolean {
+  return streamReadyState.get(accountId) === true && activeStreams.has(accountId);
+}
+
+export async function waitForReadyStream(
+  accountId: string,
+  timeoutMs = 3000,
+): Promise<grpc.ClientDuplexStream<any, any>> {
+  const existing = activeStreams.get(accountId);
+  if (existing && isStreamReady(accountId)) {
+    return existing;
+  }
+
+  return await new Promise<grpc.ClientDuplexStream<any, any>>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const waiters = streamWaiters.get(accountId) ?? [];
+      streamWaiters.set(
+        accountId,
+        waiters.filter((entry) => entry.resolve !== wrappedResolve),
+      );
+      reject(new Error(`[buz] Timed out waiting for ready gRPC stream for account ${accountId}`));
+    }, timeoutMs);
+
+    const wrappedResolve = (stream: grpc.ClientDuplexStream<any, any>) => {
+      clearTimeout(timer);
+      resolve(stream);
+    };
+    const wrappedReject = (err: Error) => {
+      clearTimeout(timer);
+      reject(err);
+    };
+
+    const current = streamWaiters.get(accountId) ?? [];
+    current.push({ resolve: wrappedResolve, reject: wrappedReject });
+    streamWaiters.set(accountId, current);
   });
 }
 
@@ -80,20 +145,30 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       clearInterval(pingInterval);
       pingInterval = null;
     }
+    streamReadyState.set(accountId, false);
+    activeStreams.delete(accountId);
     if (stream) {
-      activeStreams.delete(accountId);
-      stream.removeAllListeners();
+      const current = stream;
       stream = null;
+      current.removeAllListeners();
+      try {
+        current.cancel();
+      } catch (err: any) {
+        console.warn("[buz gateway] stream cancel during cleanup failed:", err?.message || String(err));
+      }
     }
   };
 
   const scheduleReconnect = (reason?: string) => {
     console.log(`[buz gateway] scheduleReconnect called, reason: ${reason || "none"}`);
     cleanupStream();
-    // Keep running: true during reconnect attempts
+    rejectPendingWaiters(
+      accountId,
+      new Error(`[buz] gRPC stream unavailable for account ${accountId}${reason ? `: ${reason}` : ""}`),
+    );
     setStatus(ctx, {
       connected: false,
-      running: true, // Still trying to run
+      running: true,
       ...(reason ? { lastError: reason } : {}),
     });
 
@@ -124,11 +199,10 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     cleanupStream();
     setStatus(ctx, {
       connected: false,
-      running: true, // Mark as running while connecting
+      running: true,
       lastError: everConnected ? null : "connecting",
     });
 
-    // Create metadata with authorization header
     const metadata = new grpc.Metadata();
     metadata.add("authorization", `Bearer ${secretKey}`);
     metadata.add("x-openclaw-id", accountId);
@@ -153,10 +227,8 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       return;
     }
 
-    activeStreams.set(accountId, stream);
-    console.log("[buz gateway] stream stored, total active streams:", activeStreams.size);
+    streamReadyState.set(accountId, false);
 
-    // Send auth request via message body (for backward compatibility)
     const authRequest = {
       auth_req: {
         secret_key: secretKey,
@@ -168,7 +240,8 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       stream.write(authRequest);
     } catch (err: any) {
       console.error("[buz gateway] failed to send auth request:", err?.message);
-      // Don't schedule reconnect here, let the stream error handler deal with it
+      scheduleReconnect(err?.message || "failed to send auth request");
+      return;
     }
 
     stream.on("data", async (msg: any) => {
@@ -176,7 +249,9 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
         if (msg.auth_res.success) {
           everConnected = true;
           reconnectAttempts = 0;
-          // IMPORTANT: Must include running: true
+          activeStreams.set(accountId, stream!);
+          streamReadyState.set(accountId, true);
+          resolvePendingWaiters(accountId, stream!);
           setStatus(ctx, {
             running: true,
             connected: true,
@@ -188,7 +263,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
 
           if (pingInterval) clearInterval(pingInterval);
           pingInterval = setInterval(() => {
-            if (stream) {
+            if (stream && streamReadyState.get(accountId) === true) {
               try {
                 stream.write({
                   ping: { timestamp: Date.now() },
@@ -212,7 +287,6 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
 
       if (msg.inbound_msg) {
         console.log("[buz gateway] received inbound message");
-        // Update lastInboundAt when receiving messages
         setStatus(ctx, {
           lastInboundAt: Date.now(),
           running: true,
@@ -246,7 +320,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
 
   console.log("[buz gateway] initializing connection...");
   setStatus(ctx, {
-    running: true, // Mark as running from the start
+    running: true,
     connected: false,
     lastError: null,
     lastStartAt: Date.now(),
@@ -261,12 +335,8 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    rejectPendingWaiters(accountId, new Error(`[buz] gateway aborted for account ${accountId}`));
     cleanupStream();
-    const activeStream = activeStreams.get(accountId);
-    if (activeStream) {
-      activeStream.cancel();
-      activeStreams.delete(accountId);
-    }
     const activeClient = activeClients.get(accountId);
     if (activeClient) {
       activeClient.close();
@@ -292,10 +362,17 @@ export async function stopGateway(ctx: any) {
   const accountId = ctx.account?.accountId || "default";
   console.log("[buz gateway] stopping account:", accountId);
 
+  streamReadyState.set(accountId, false);
+  rejectPendingWaiters(accountId, new Error(`[buz] stop requested for account ${accountId}`));
+
   const stream = activeStreams.get(accountId);
   if (stream) {
     console.log("[buz gateway] cancelling stream");
-    stream.cancel();
+    try {
+      stream.cancel();
+    } catch (err: any) {
+      console.warn("[buz gateway] stopGateway cancel failed:", err?.message || String(err));
+    }
     activeStreams.delete(accountId);
   }
 
