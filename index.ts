@@ -168,16 +168,24 @@ export const buzChannelPlugin = {
     textChunkLimit: 4000,
     resolveTarget: ({ to }: { to?: string; cfg?: any; allowFrom?: string[]; accountId?: string | null; mode?: "explicit" | "implicit" }) => {
       const trimmed = to?.trim() ?? "";
+
+      // buz channel always requires an explicit target
+      // For cron jobs, specify delivery.to with a buz user/group ID
       if (!trimmed) {
         return {
           ok: false,
-          error: new Error("Delivering to buz requires target <targetId>"),
+          error: new Error(
+            "Delivering to buz requires target <targetId>. " +
+            "For cron jobs, specify delivery.to (e.g., 'user:12345' or 'group:abc')"
+          ),
         };
       }
+      
+
       // Normalize buz target format
       // Supported: userId, group:groupId, buz:userId, buz:group:groupId
       let normalized = trimmed;
-      
+
       // If already starts with buz:, keep as-is
       if (!normalized.startsWith("buz:")) {
         // If starts with group: or user:, add buz: prefix
@@ -188,7 +196,7 @@ export const buzChannelPlugin = {
           normalized = `buz:${normalized}`;
         }
       }
-      
+
       return { ok: true, to: normalized };
     },
     sendText: async ({ to, text, accountId, replyToId, threadId, cfg }: any) => {

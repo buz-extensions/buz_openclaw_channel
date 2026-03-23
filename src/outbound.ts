@@ -49,10 +49,21 @@ async function resolveWritableStream(accountId: string) {
 export async function sendText(params: any) {
   const { to, text, accountId, replyToId, type = "final_reply", event } = params;
 
+  console.log("[buz outbound] sendText called:", JSON.stringify({ to, accountId, type, textLength: text?.length }));
+
   const targetAccountId = String(accountId || "default").trim() || "default";
   const { chatType, targetId } = resolveTarget(String(to || ""));
+  
+  console.log("[buz outbound] resolved:", JSON.stringify({ chatType, targetId, originalTo: to }));
+  
   if (!targetId) {
-    throw new Error("[buz] Missing targetId for outbound message");
+    // buz channel requires an explicit target (user ID or group ID)
+    // For cron announce, you must specify delivery.to in the job config, e.g.:
+    //   "delivery": { "mode": "announce", "channel": "buz", "to": "user:12345" }
+    throw new Error(
+      "[buz] Cannot send message: target is required. " +
+      "For cron jobs, specify delivery.to with a buz user ID (e.g., 'user:12345' or 'group:abc')"
+    );
   }
 
   const outboundMsg = {
