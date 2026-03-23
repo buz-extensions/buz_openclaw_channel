@@ -151,6 +151,17 @@ export async function handleInboundMessage(ctx: any, inboundMsg: any) {
   };
 
   try {
+    await core.channel.session.updateLastRoute({
+      storePath,
+      sessionKey: ctxPayload.SessionKey ?? sessionKey,
+      deliveryContext: {
+        channel: "buz",
+        to: isGroup ? `group:${conversationId}` : `user:${senderId}`,
+        accountId,
+      },
+      ctx: ctxPayload,
+    });
+
     await recordInboundSessionAndDispatchReply({
       cfg,
       channel: "buz",

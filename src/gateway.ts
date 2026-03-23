@@ -136,6 +136,8 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
   let reconnectAttempts = 0;
   let everConnected = false;
   let isActive = true;
+  let isConnecting = false;
+  let connectionGeneration = 0;
   let pingInterval: NodeJS.Timeout | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -159,8 +161,17 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     }
   };
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  };
+
   const scheduleReconnect = (reason?: string) => {
     console.log(`[buz gateway] scheduleReconnect called, reason: ${reason || "none"}`);
+    isConnecting = false;
+    connectionGeneration += 1;
     cleanupStream();
     rejectPendingWaiters(
       accountId,
@@ -174,12 +185,15 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
 
     if (!isActive || ctx.abortSignal?.aborted) {
       console.log("[buz gateway] aborting reconnect (isActive=false or aborted)");
+      clearReconnectTimer();
       return;
     }
 
+    clearReconnectTimer();
+    const nextAttempt = reconnectAttempts + 1;
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-    reconnectAttempts += 1;
-    console.log(`[buz gateway] reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+    reconnectAttempts = nextAttempt;
+    console.log(`[buz gateway] reconnecting in ${delay}ms (attempt ${nextAttempt})`);
     ctx.log?.warn?.(
       `[${accountId}] buz gRPC disconnected${reason ? `: ${reason}` : ""}; reconnecting in ${delay}ms`,
     );
@@ -195,7 +209,14 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       console.log("[buz gateway] aborting connect (isActive=false or aborted)");
       return;
     }
+    if (isConnecting) {
+      console.log("[buz gateway] connect skipped: already connecting");
+      return;
+    }
 
+    clearReconnectTimer();
+    isConnecting = true;
+    const generation = ++connectionGeneration;
     cleanupStream();
     setStatus(ctx, {
       connected: false,
@@ -212,6 +233,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
       stream = client.ConnectStream(metadata);
       console.log("[buz gateway] stream created:", !!stream);
     } catch (err: any) {
+      isConnecting = false;
       console.error("[buz gateway] failed to create gRPC stream:", err?.message || String(err));
       ctx.log?.error?.(
         `[${accountId}] failed to create gRPC stream: ${err?.message || String(err)}`,
@@ -221,6 +243,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     }
 
     if (!stream) {
+      isConnecting = false;
       console.error("[buz gateway] stream is null after creation");
       ctx.log?.error?.(`[${accountId}] failed to create gRPC stream: stream is null`);
       scheduleReconnect("stream is null");
@@ -239,14 +262,20 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     try {
       stream.write(authRequest);
     } catch (err: any) {
+      isConnecting = false;
       console.error("[buz gateway] failed to send auth request:", err?.message);
       scheduleReconnect(err?.message || "failed to send auth request");
       return;
     }
 
     stream.on("data", async (msg: any) => {
+      if (generation !== connectionGeneration) {
+        console.log("[buz gateway] ignoring data from stale generation", generation, connectionGeneration);
+        return;
+      }
       if (msg.auth_res) {
         if (msg.auth_res.success) {
+          isConnecting = false;
           everConnected = true;
           reconnectAttempts = 0;
           activeStreams.set(accountId, stream!);
@@ -277,6 +306,7 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
           }, 30000);
           console.log("[buz gateway] heartbeat interval set (30s)");
         } else {
+          isConnecting = false;
           const reason = `Auth failed: ${msg.auth_res.error_message || "unknown error"}`;
           console.error("[buz gateway] authentication failed:", reason);
           ctx.log?.error?.(`[${accountId}] ${reason}`);
@@ -304,11 +334,21 @@ export async function startGateway(ctx: any, serverAddress: string, secretKey: s
     });
 
     stream.on("end", () => {
+      if (generation !== connectionGeneration) {
+        console.log("[buz gateway] ignoring end from stale generation", generation, connectionGeneration);
+        return;
+      }
+      isConnecting = false;
       console.log("[buz gateway] stream ended");
       scheduleReconnect("stream ended");
     });
 
     stream.on("error", (err: any) => {
+      if (generation !== connectionGeneration) {
+        console.log("[buz gateway] ignoring error from stale generation", generation, connectionGeneration);
+        return;
+      }
+      isConnecting = false;
       const reason = err?.message || String(err);
       console.error("[buz gateway] stream error:", reason);
       ctx.log?.error?.(`[${accountId}] gRPC stream error: ${reason}`);

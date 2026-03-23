@@ -48,7 +48,25 @@ export const buzChannelPlugin = {
     threads: true,
     media: false,
   },
-  configSchema: buildChannelConfigSchema(BuzConfigSchema),
+  configSchema: {
+    ...buildChannelConfigSchema(BuzConfigSchema),
+    uiHints: {
+      serverAddress: {
+        label: "Server Address",
+      },
+      secretKey: {
+        label: "Secret Key",
+        sensitive: false,
+      },
+      "accounts.*.serverAddress": {
+        label: "Server Address",
+      },
+      "accounts.*.secretKey": {
+        label: "Secret Key",
+        sensitive: false,
+      },
+    },
+  },
   config: {
     listAccountIds: (cfg: any) => {
       const accounts = cfg?.channels?.["buz"]?.accounts || {};
@@ -95,7 +113,43 @@ export const buzChannelPlugin = {
       looksLikeId: (_id: string) => true,
       hint: "<targetId>",
     },
-    resolveSessionTarget: ({ id }: any) => id,
+    resolveSessionTarget: ({ kind, id }: any) => {
+      if (kind === "group") return `group:${id}`;
+      return `user:${id}`;
+    },
+    resolveOutboundSessionRoute: ({ to, route, id, kind, accountId }: any) => {
+      const raw =
+        (typeof to === "string" && to.trim()) ||
+        (typeof route?.to === "string" && route.to.trim()) ||
+        "";
+
+      if (raw) {
+        let normalized = raw;
+        if (!normalized.startsWith("buz:")) {
+          if (normalized.startsWith("group:") || normalized.startsWith("user:")) {
+            normalized = `buz:${normalized}`;
+          } else {
+            normalized = `buz:${normalized}`;
+          }
+        }
+        return {
+          channel: "buz",
+          accountId: String(accountId || route?.accountId || "default"),
+          to: normalized,
+        };
+      }
+
+      if (typeof id === "string" && id.trim()) {
+        const normalized = kind === "group" ? `buz:group:${id.trim()}` : `buz:user:${id.trim()}`;
+        return {
+          channel: "buz",
+          accountId: String(accountId || route?.accountId || "default"),
+          to: normalized,
+        };
+      }
+
+      return null;
+    },
   },
   setup: {
     validateInput: async (params: any) => {
@@ -112,6 +166,31 @@ export const buzChannelPlugin = {
     deliveryMode: "direct",
     chunker: null,
     textChunkLimit: 4000,
+    resolveTarget: ({ to }: { to?: string; cfg?: any; allowFrom?: string[]; accountId?: string | null; mode?: "explicit" | "implicit" }) => {
+      const trimmed = to?.trim() ?? "";
+      if (!trimmed) {
+        return {
+          ok: false,
+          error: new Error("Delivering to buz requires target <targetId>"),
+        };
+      }
+      // Normalize buz target format
+      // Supported: userId, group:groupId, buz:userId, buz:group:groupId
+      let normalized = trimmed;
+      
+      // If already starts with buz:, keep as-is
+      if (!normalized.startsWith("buz:")) {
+        // If starts with group: or user:, add buz: prefix
+        if (normalized.startsWith("group:") || normalized.startsWith("user:")) {
+          normalized = `buz:${normalized}`;
+        } else {
+          // Otherwise assume it's a direct user target
+          normalized = `buz:${normalized}`;
+        }
+      }
+      
+      return { ok: true, to: normalized };
+    },
     sendText: async ({ to, text, accountId, replyToId, threadId, cfg }: any) => {
       const { sendText } = await import("./src/outbound.js");
       return await sendText({ to, text, accountId, replyToId, threadId, cfg });

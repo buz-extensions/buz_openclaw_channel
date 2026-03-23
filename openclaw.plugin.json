@@ -1,6 +1,8 @@
 {
   "id": "buz",
-  "channels": ["buz"],
+  "channels": [
+    "buz"
+  ],
   "name": "buz Plugin",
   "description": "Connects OpenClaw to buz",
   "enabledByDefault": true,
@@ -35,6 +37,22 @@
           }
         }
       }
+    }
+  },
+  "uiHints": {
+    "serverAddress": {
+      "label": "Server Address"
+    },
+    "secretKey": {
+      "label": "Secret Key",
+      "sensitive": false
+    },
+    "accounts.*.serverAddress": {
+      "label": "Server Address"
+    },
+    "accounts.*.secretKey": {
+      "label": "Secret Key",
+      "sensitive": false
     }
   }
 }
